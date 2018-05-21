@@ -15,22 +15,14 @@ public class MainActivity extends AppCompatActivity {
     ImageView imageView;
     ArrayList<SimplePhoto> mPhotos = new ArrayList<>();
     int mCount= -1;
-
-    Handler.Callback mHanldlerCallback = new Handler.Callback() {
-        @Override
-        public boolean handleMessage(Message msg) {
-            return false;
-        }
-    };
-
-    Handler mHandler = new Handler(mHanldlerCallback);
+    
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         imageView = findViewById(R.id.imageView);
-        LoadImage.setImage("http://grand-screen.com/blog/wp-content/uploads/2016/01/d6.jpg", imageView);
+        ImageLoader.setImage("http://grand-screen.com/blog/wp-content/uploads/2016/01/d6.jpg", imageView);
 
         fillArray();
 
@@ -56,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
             mCount++;
             if (mCount == mPhotos.size())
                 mCount = 0;
-            LoadImage.setImage(mPhotos.get(mCount).getNormalSize(),imageView);
+            ImageLoader.setImage(mPhotos.get(mCount).getNormalSize(),imageView);
             Button button = findViewById(v.getId());
             button.setText(String.valueOf(mPhotos.size()));
         }

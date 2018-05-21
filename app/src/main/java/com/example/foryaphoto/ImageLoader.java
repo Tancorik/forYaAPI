@@ -13,7 +13,7 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 
-public class LoadImage {
+public class ImageLoader {
     private static final String TAG = "imageTag";
     public static void setImage(final String url, final ImageView imageView){
         Handler.Callback handlerCallback = new Handler.Callback() {

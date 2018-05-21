@@ -13,19 +13,16 @@ public class SimplePhoto {
     private String mOriginSize;
 
     public SimplePhoto(String smallSize){
-        mSmallSize = smallSize;
-        mNormalSize = smallSize;
-        mOriginSize = smallSize;
+        this(smallSize, smallSize, smallSize);
     }
 
     public SimplePhoto(String smallSize, String normalSize){
-        this(smallSize);
-        mNormalSize = normalSize;
-        mOriginSize = normalSize;
+        this(smallSize,normalSize,normalSize);
     }
 
     public SimplePhoto(String smallSize, String normalSize, String originSize){
-        this(smallSize, normalSize);
+        mSmallSize = smallSize;
+        mNormalSize = normalSize;
         mOriginSize = originSize;
     }
 
