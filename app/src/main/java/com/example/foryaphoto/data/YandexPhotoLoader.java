@@ -1,6 +1,10 @@
 package com.example.foryaphoto.data;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Handler;
+import android.os.Looper;
+import android.support.annotation.Nullable;
 
 import com.example.foryaphoto.domain.IDataSource;
 
@@ -9,6 +13,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -63,14 +68,25 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
             public void run() {
                 InputStream inputStream = requestPhotoInfo(count);
                 String jsonString = readString(inputStream);
-                List<YandexPhotoInfo> infoList = mParser.parseJSON(jsonString);
-                mNextDataURL = mParser.getNextURL();
+                YandexPhotoParser parser = new YandexPhotoParser();
+                List<YandexPhotoInfo> infoList = parser.parseJSON(jsonString);
+                final List<Bitmap> photos = loadSmallPhotos(infoList);
+                final String nextUrl = parser.getNextURL();
+
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        mNextDataURL = nextUrl;
+                        mSmallPhotoCallback.onLoadSmall(count, photos);
+                    }
+                });
             }
         });
     }
 
     /**
      * Получить большие фотографии из данных
+     *
      * @param count     количество запрашиваемых фотографий
      */
     @Override
@@ -80,6 +96,7 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
 
     /**
      * Получить хендлер из отдльного потока
+     *
      * @param handler
      */
     @Override
@@ -90,8 +107,9 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
 
     /**
      * Получить поток для чтения информации о фотографиях
-      * @param count    количество запрашиваемых фотографий
-     * @return
+     *
+     * @param count     количество запрашиваемых фотографий
+     * @return          поток с данными о фотографиях
      */
     protected InputStream requestPhotoInfo(int count) {
         String url = makeURL(count);
@@ -136,7 +154,7 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
      */
     protected String makeURL(int count) {
         String url;
-        if (mNextDataURL == null){
+        if (mNextDataURL == null) {
             url = DATA_URL + "?limit=" + count;
         }
         else {
@@ -145,6 +163,18 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
         return url;
     }
 
-
+    private List<Bitmap> loadSmallPhotos(List<YandexPhotoInfo> photoInfoList) {
+        List<Bitmap> photos = new ArrayList<>(photoInfoList.size());
+        try {
+            for (YandexPhotoInfo photoInfo: photoInfoList) {
+                HttpURLConnection connection = ((HttpURLConnection) new URL(photoInfo.mSmallSizeURL).openConnection());
+                InputStream inputStream = connection.getInputStream();
+                photos.add(BitmapFactory.decodeStream(inputStream));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return photos;
+    }
 
 }
