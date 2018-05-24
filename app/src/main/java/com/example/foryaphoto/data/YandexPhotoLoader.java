@@ -153,6 +153,7 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
 
     /**
      * Задать URL-адрес для запроса информации
+     *
      * @param count     количество запрашиваемых фотографий
      * @return
      */
@@ -170,19 +171,17 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
     private List<Bitmap> loadSmallPhotos(List<YandexPhotoInfo> photoInfoList) {
         List<Bitmap> photos = new ArrayList<>(photoInfoList.size());
         Bitmap bitmap;
+        CacheManager cacheManager = CacheManager.getInstance();
         try {
             for (YandexPhotoInfo photoInfo: photoInfoList) {
-                bitmap = CacheManager.getInstance().getBitmap(photoInfo.mSmallSizeURL);
-                if (bitmap != null) {
-                    photos.add(bitmap);
-                }
-                else {
+                bitmap = cacheManager.getBitmap(photoInfo.mSmallSizeURL);
+                if (bitmap == null) {
                     HttpURLConnection connection = ((HttpURLConnection) new URL(photoInfo.mSmallSizeURL).openConnection());
                     InputStream inputStream = connection.getInputStream();
                     bitmap = BitmapFactory.decodeStream(inputStream);
-                    photos.add(bitmap);
-                    CacheManager.getInstance().cache(photoInfo.mSmallSizeURL, bitmap);
+                    cacheManager.cache(photoInfo.mSmallSizeURL, bitmap);
                 }
+                photos.add(bitmap);
             }
         } catch (IOException e) {
             e.printStackTrace();

@@ -3,6 +3,7 @@ package com.example.foryaphoto.data;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.util.Log;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -15,10 +16,12 @@ import java.util.UUID;
  */
 public class CacheManager {
 
+    private static final String LOG_TAG = "CacheManager";
+
     private Context mContext;
 
     private static class SingletonHolder {
-        public static final CacheManager HOLDER_INSTANCE = new CacheManager();
+        private static final CacheManager HOLDER_INSTANCE = new CacheManager();
     }
 
     public static CacheManager getInstance() {
@@ -33,26 +36,35 @@ public class CacheManager {
         for (String fileName : mContext.fileList()) {
             mContext.deleteFile(fileName);
         }
-
     }
 
     public Bitmap getBitmap(String fileURL) {
         Bitmap result;
-        UUID fileName = UUID.nameUUIDFromBytes(fileURL.getBytes());
-        try(FileInputStream fileInputStream = mContext.openFileInput(fileName.toString())) {
+        String fileName = makeFileName(fileURL);
+        try (FileInputStream fileInputStream = mContext.openFileInput(fileName)) {
             result = BitmapFactory.decodeStream(fileInputStream);
         } catch(IOException e) {
-            return null;
+            result = null;
+            Log.e(LOG_TAG, "Ошибка при попытке открыть или прочитать файл: " + fileName, e);
+            e.printStackTrace();
         }
         return result;
     }
 
     public void cache(String fileURL, Bitmap bitmap) {
-        UUID fileName = UUID.nameUUIDFromBytes(fileURL.getBytes());
-        try( FileOutputStream fileOutputStream = mContext.openFileOutput(fileName.toString(), mContext.MODE_PRIVATE )) {
+        String fileName = makeFileName(fileURL);
+        try (
+                FileOutputStream fileOutputStream = mContext.openFileOutput(
+                        fileName, Context.MODE_PRIVATE ))
+        {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, fileOutputStream);
         } catch (IOException e) {
             e.printStackTrace();
+            Log.e(LOG_TAG, "Ошибка при записи приватного файла: " + fileName, e);
         }
+    }
+
+    private String makeFileName(String fileUrl) {
+        return UUID.nameUUIDFromBytes(fileUrl.getBytes()).toString();
     }
 }
