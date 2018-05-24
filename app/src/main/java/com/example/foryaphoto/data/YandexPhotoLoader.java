@@ -1,13 +1,16 @@
 package com.example.foryaphoto.data;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
-import android.support.annotation.Nullable;
 
 import com.example.foryaphoto.domain.IDataSource;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -15,6 +18,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Класс предоставления фотографий в виде Bitmap
@@ -165,16 +169,24 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
 
     private List<Bitmap> loadSmallPhotos(List<YandexPhotoInfo> photoInfoList) {
         List<Bitmap> photos = new ArrayList<>(photoInfoList.size());
+        Bitmap bitmap;
         try {
             for (YandexPhotoInfo photoInfo: photoInfoList) {
-                HttpURLConnection connection = ((HttpURLConnection) new URL(photoInfo.mSmallSizeURL).openConnection());
-                InputStream inputStream = connection.getInputStream();
-                photos.add(BitmapFactory.decodeStream(inputStream));
+                bitmap = CacheManager.getInstance().getBitmap(photoInfo.mSmallSizeURL);
+                if (bitmap != null) {
+                    photos.add(bitmap);
+                }
+                else {
+                    HttpURLConnection connection = ((HttpURLConnection) new URL(photoInfo.mSmallSizeURL).openConnection());
+                    InputStream inputStream = connection.getInputStream();
+                    bitmap = BitmapFactory.decodeStream(inputStream);
+                    photos.add(bitmap);
+                    CacheManager.getInstance().cache(photoInfo.mSmallSizeURL, bitmap);
+                }
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
         return photos;
     }
-
 }

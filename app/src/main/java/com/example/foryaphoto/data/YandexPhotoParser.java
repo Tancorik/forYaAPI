@@ -90,7 +90,6 @@ public class YandexPhotoParser {
                             .setBigSizeURL(mBigSizeURL)
                             .build();
                     photoInfoArray.add(currentPhotoInfo);
-
                 } catch (JSONException e) {
                     Log.e("Json parse exception", e.getMessage());
                     e.printStackTrace();

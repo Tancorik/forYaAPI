@@ -5,30 +5,37 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <android.support.v7.widget.RecyclerView
-        android:id="@+id/recycler_view"
+    <fragment
+        android:id="@+id/fragment_view"
+        android:name="com.example.foryaphoto.MainFragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        app:layoutManager="LinearLayoutManager" />
+        />
 
-    <FrameLayout
-        android:id="@+id/progress_bar_layout"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:background="@android:color/white"
+    <!--<android.support.v7.widget.RecyclerView-->
+        <!--android:id="@+id/recycler_view"-->
+        <!--android:layout_width="match_parent"-->
+        <!--android:layout_height="match_parent"-->
+        <!--android:orientation="vertical"-->
+        <!--app:layoutManager="LinearLayoutManager" />-->
 
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
+    <!--<FrameLayout-->
+        <!--android:id="@+id/progress_bar_layout"-->
+        <!--android:layout_width="0dp"-->
+        <!--android:layout_height="0dp"-->
+        <!--android:background="@android:color/white"-->
 
-        >
+        <!--app:layout_constraintLeft_toLeftOf="parent"-->
+        <!--app:layout_constraintRight_toRightOf="parent"-->
+        <!--app:layout_constraintTop_toTopOf="parent"-->
+        <!--app:layout_constraintBottom_toBottomOf="parent"-->
 
-        <ProgressBar
-            android:layout_gravity="center"
-            android:layout_width="100dp"
-            android:layout_height="100dp" />
-    </FrameLayout>
+        <!--&gt;-->
+
+        <!--<ProgressBar-->
+            <!--android:layout_gravity="center"-->
+            <!--android:layout_width="100dp"-->
+            <!--android:layout_height="100dp" />-->
+    <!--</FrameLayout>-->
 
 </android.support.constraint.ConstraintLayout>
