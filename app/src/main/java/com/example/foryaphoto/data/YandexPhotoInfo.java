@@ -1,5 +1,7 @@
 package com.example.foryaphoto.data;
 
+import java.util.Objects;
+
 /**
  * Класс хранения информации об одной фотографии
  */
@@ -37,6 +39,26 @@ public class YandexPhotoInfo {
         this.mCreatedTime = mCreatedTime;
         this.mSmallSizeURL = mSmallSizeURL;
         this.mBigSizeURL = mBigSizeURL;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(mId, mTitle, mPublishedTime, mEditedTime, mUpdatedTime, mCreatedTime, mSmallSizeURL, mBigSizeURL);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        YandexPhotoInfo photoInfo = (YandexPhotoInfo) o;
+        return Objects.equals(mId, photoInfo.mId) &&
+                Objects.equals(mTitle, photoInfo.mTitle) &&
+                Objects.equals(mPublishedTime, photoInfo.mPublishedTime) &&
+                Objects.equals(mEditedTime, photoInfo.mEditedTime) &&
+                Objects.equals(mUpdatedTime, photoInfo.mUpdatedTime) &&
+                Objects.equals(mCreatedTime, photoInfo.mCreatedTime) &&
+                Objects.equals(mSmallSizeURL, photoInfo.mSmallSizeURL) &&
+                Objects.equals(mBigSizeURL, photoInfo.mBigSizeURL);
     }
 
     /**

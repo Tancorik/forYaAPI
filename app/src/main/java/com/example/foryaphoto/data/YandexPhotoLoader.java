@@ -1,16 +1,14 @@
 package com.example.foryaphoto.data;
 
-import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
+import android.support.annotation.WorkerThread;
 
-import com.example.foryaphoto.domain.IDataSource;
+import com.example.foryaphoto.domain.IBigPhotosSource;
+import com.example.foryaphoto.domain.ISmallPhotosSource;
 
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -18,12 +16,11 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Класс предоставления фотографий в виде Bitmap
  */
-public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInitCallback {
+public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, LoaderThread.IHandlerInitCallback {
 
     private static final String  DATA_URL = "http://api-fotki.yandex.ru/api/recent/";
 
@@ -33,21 +30,32 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
     private ISmallPhotoCallback mSmallPhotoCallback;
     private IBigPhotoCallback mBigPhotoCallback;
     private YandexPhotoParser mParser;
+    private List<YandexPhotoInfo> mInfoList;
 
-    /**
-     * Конструктор
-     *
-     * @param initCallback
-     * @param smallPhotoCallback
-     * @param bigPhotoCallback
-     */
-    public YandexPhotoLoader(IInitSourceCallback initCallback, ISmallPhotoCallback smallPhotoCallback,
-                      IBigPhotoCallback bigPhotoCallback) {
-        mInitCallback = initCallback;
-        mSmallPhotoCallback = smallPhotoCallback;
-        mBigPhotoCallback = bigPhotoCallback;
+    private static class SingletonHolder {
+        private static final YandexPhotoLoader HOLDER_INSTANCE = new YandexPhotoLoader();
+    }
+
+    public static YandexPhotoLoader getInstance() {
+        return SingletonHolder.HOLDER_INSTANCE;
+    }
+
+
+    YandexPhotoLoader() {
         mParser = new YandexPhotoParser();
         new LoaderThread(this).start();
+    }
+
+    public void setInitCallback(IInitSourceCallback initCallback) {
+        mInitCallback = initCallback;
+    }
+
+    public void setSmallPhotoCallback(ISmallPhotoCallback smallPhotoCallback) {
+        mSmallPhotoCallback = smallPhotoCallback;
+    }
+
+    public void setBigPhotoCallback(IBigPhotoCallback bigPhotoCallback) {
+        mBigPhotoCallback = bigPhotoCallback;
     }
 
     /**
@@ -73,8 +81,8 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
                 InputStream inputStream = requestPhotoInfo(count);
                 String jsonString = readString(inputStream);
                 YandexPhotoParser parser = new YandexPhotoParser();
-                List<YandexPhotoInfo> infoList = parser.parseJSON(jsonString);
-                final List<Bitmap> photos = loadSmallPhotos(infoList);
+                mInfoList = parser.parseJSON(jsonString);
+                final List<Bitmap> photos = loadSmallPhotos(mInfoList);
                 final String nextUrl = parser.getNextURL();
 
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
@@ -91,11 +99,39 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
     /**
      * Получить большие фотографии из данных
      *
-     * @param count     количество запрашиваемых фотографий
+     * @param number     номер запрашиваемой фотографий
      */
     @Override
-    public void requestBigPhotos(int count) {
+    public void requestBigPhotos(int number) {
+        if (mBigPhotoCallback == null) {
+            return;
+        }
 
+        if (number < 0) {
+            number = 0;
+            mBigPhotoCallback.onLoadBig(number, null);
+        }
+        else if (number >= mInfoList.size()) {
+            number = mInfoList.size() - 1;
+            mBigPhotoCallback.onLoadBig(number, null);
+        }
+
+        final int index = number;
+
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mInfoList != null) {
+                    final Bitmap bitmap = loadBigPhotos(mInfoList.get(index));
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            mBigPhotoCallback.onLoadBig(index, bitmap);
+                        }
+                    });
+                }
+            }
+        });
     }
 
     /**
@@ -115,6 +151,7 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
      * @param count     количество запрашиваемых фотографий
      * @return          поток с данными о фотографиях
      */
+    @WorkerThread
     protected InputStream requestPhotoInfo(int count) {
         String url = makeURL(count);
         InputStream inputStream;
@@ -137,6 +174,7 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
      * @param inputStream   поток для чтения информации
      * @return
      */
+    @WorkerThread
     protected String readString(InputStream inputStream) {
         int symbol;
         StringBuilder stringBuilder = new StringBuilder();
@@ -157,6 +195,7 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
      * @param count     количество запрашиваемых фотографий
      * @return
      */
+    @WorkerThread
     protected String makeURL(int count) {
         String url;
         if (mNextDataURL == null) {
@@ -168,6 +207,7 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
         return url;
     }
 
+    @WorkerThread
     private List<Bitmap> loadSmallPhotos(List<YandexPhotoInfo> photoInfoList) {
         List<Bitmap> photos = new ArrayList<>(photoInfoList.size());
         Bitmap bitmap;
@@ -187,5 +227,18 @@ public class YandexPhotoLoader implements IDataSource, LoaderThread.IHandlerInit
             e.printStackTrace();
         }
         return photos;
+    }
+
+    @WorkerThread
+    private Bitmap loadBigPhotos(YandexPhotoInfo photoInfo) {
+        Bitmap bitmap = null;
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(photoInfo.mBigSizeURL).openConnection();
+            InputStream inputStream = connection.getInputStream();
+            bitmap = BitmapFactory.decodeStream(inputStream);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return bitmap;
     }
 }

@@ -1,5 +1,6 @@
 package com.example.foryaphoto;
 
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -12,7 +13,8 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import com.example.foryaphoto.data.YandexPhotoLoader;
-import com.example.foryaphoto.domain.IDataSource;
+import com.example.foryaphoto.domain.IMyListener;
+import com.example.foryaphoto.domain.ISmallPhotosSource;
 
 import java.util.List;
 
@@ -21,10 +23,10 @@ import java.util.List;
  *         Created on 24.05.18
  */
 
-public class MainFragment extends Fragment implements IDataSource.IInitSourceCallback,
-        IDataSource.ISmallPhotoCallback, IDataSource.IBigPhotoCallback{
+public class MainFragment extends Fragment implements ISmallPhotosSource.IInitSourceCallback,
+        ISmallPhotosSource.ISmallPhotoCallback, IMyListener {
 
-
+    private final String POSITION = "pos";
     private YandexPhotoLoader mLoader;
     private RecyclerView mRecyclerView;
     private RecyclerAdapter mAdapter;
@@ -44,13 +46,15 @@ public class MainFragment extends Fragment implements IDataSource.IInitSourceCal
 
         View view = inflater.inflate(R.layout.fragment_main, container, false);
 
-        mAdapter = new RecyclerAdapter();
+        mAdapter = new RecyclerAdapter(this);
         mRecyclerView = view.findViewById(R.id.recycler_view);
         mRecyclerView.setAdapter(mAdapter);
 
         mProgressBarLayout = view.findViewById(R.id.progress_bar_layout);
 
-        mLoader = new YandexPhotoLoader(this, this, this);
+        mLoader = YandexPhotoLoader.getInstance();
+        mLoader.setInitCallback(this);
+        mLoader.setSmallPhotoCallback(this);
         mLoader.initSource();
 
         return view;
@@ -69,8 +73,14 @@ public class MainFragment extends Fragment implements IDataSource.IInitSourceCal
         mProgressBarLayout.setVisibility(View.GONE);
     }
 
+    /**
+     * Получить позицию фотки которую нужно загрузить в новой Активити
+     *
+     * @param position      позиция фотки по которой клинул пользователь
+     */
     @Override
-    public void onLoadBig(int count, List<Bitmap> bitmapList) {
-
+    public void setCurrentPhoto(int count, int position) {
+        Intent intent = PagerActivity.newIntent(getContext(), position);
+        startActivity(intent);
     }
 }
