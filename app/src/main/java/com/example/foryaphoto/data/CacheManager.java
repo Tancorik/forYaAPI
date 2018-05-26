@@ -45,6 +45,7 @@ public class CacheManager {
     }
 
     public void getBitmap(final String fileURL, Handler workerHandler, final ICallback callback) {
+        Log.e(LOG_TAG, "Рабочий поток: " + workerHandler.getLooper().getThread().getName());
         workerHandler.post(new Runnable() {
             @Override
             public void run() {

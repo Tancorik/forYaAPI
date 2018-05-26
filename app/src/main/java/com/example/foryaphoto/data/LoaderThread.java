@@ -10,8 +10,11 @@ public class LoaderThread extends Thread{
 
     private IHandlerInitCallback mCallback;
     private Handler mHandler;
-    LoaderThread(IHandlerInitCallback callback) {
+    private int mId;
+
+    LoaderThread(IHandlerInitCallback callback, int id) {
         mCallback = callback;
+        mId = id;
     }
 
     public void run() {
@@ -21,7 +24,7 @@ public class LoaderThread extends Thread{
         new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override
             public void run() {
-                mCallback.onHandlerInit(mHandler);
+                mCallback.onHandlerInit(mHandler, mId);
             }
         });
 
@@ -29,6 +32,6 @@ public class LoaderThread extends Thread{
     }
 
     interface IHandlerInitCallback {
-        void onHandlerInit(Handler handler);
+        void onHandlerInit(Handler handler, int id);
     }
 }

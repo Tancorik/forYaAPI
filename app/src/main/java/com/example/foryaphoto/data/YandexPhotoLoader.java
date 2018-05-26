@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
 import android.support.annotation.WorkerThread;
+import android.util.Log;
 
 import com.example.foryaphoto.domain.IBigPhotosSource;
 import com.example.foryaphoto.domain.ISmallPhotosSource;
@@ -24,15 +25,19 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
         LoaderThread.IHandlerInitCallback {
 
     private static final String  DATA_URL = "http://api-fotki.yandex.ru/api/top/";
-    private static final int PRELOAD_COUNT = 5;
+    private static final int PRELOAD_COUNT = 20;
     private static final int STEP_PREV = -1;
     private static final int STEP_NEXT = 1;
+    public static final String LOG_TAG = "YandexPhotoLoaderTag";
+
+    public static final int REQUEST_THREAD_ID = 1;
+    public static final int CACHE_THREAD_ID = 2;
 
     private RequestManager mRequestManager;
-    private NewRequestManager mNewRequestManager;
     private CacheManager mCacheManager;
     private String mNextDataURL;
-    private Handler mWorkerHandler;
+    private Handler mRequestHandler;
+    private Handler mCacheHandler;
     private Handler mMainHandler;
     private IInitSourceCallback mInitCallback;
     private ISmallPhotoCallback mSmallPhotoCallback;
@@ -50,12 +55,12 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
 
 
     YandexPhotoLoader() {
-        mRequestManager = RequestManager.getInstance();
         mCacheManager = CacheManager.getInstance();
         mParser = new YandexPhotoParser();
         mMainHandler = new Handler(Looper.getMainLooper());
-        new LoaderThread(this).start();
-        mNewRequestManager = NewRequestManager.getInstance();
+        new LoaderThread(this, REQUEST_THREAD_ID).start();
+        new LoaderThread(this, CACHE_THREAD_ID).start();
+        mRequestManager = RequestManager.getInstance();
     }
 
     public void setInitCallback(IInitSourceCallback initCallback) {
@@ -76,7 +81,7 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
     @Override
     public void initSource() {
         mNextDataURL = null;
-        if (mWorkerHandler != null)
+        if (isAllHandlersReady())
             mInitCallback.onInit();
     }
 
@@ -121,20 +126,22 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
         final int index = number;
         final String url = mInfoList.get(index).mBigSizeURL;
 
-        mCacheManager.getBitmap(url, mWorkerHandler, new CacheManager.ICallback() {
+        mCacheManager.getBitmap(url, mCacheHandler, new CacheManager.ICallback() {
             @Override
             public void onGetBitmap(final Bitmap bitmap) {
                 if (bitmap == null) {
-                    mNewRequestManager.startRequest(new PhotoCallback(url) {
+                    mRequestManager.startRequest(new PhotoCallback(url) {
                         @Override
                         public void onLoadPhoto() {
                             if (mBigPhotoCallback != null)
                                 mBigPhotoCallback.onLoadBig(index, getBitmap());
-                            mCacheManager.cache(getUrl(), getBitmap(), mWorkerHandler);
+                            mCacheManager.cache(getUrl(), getBitmap(), mCacheHandler);
                         }
                     });
+                    Log.e(LOG_TAG, "В кэше отсутсвует: " + url);
                 }
                 else {
+                    Log.e(LOG_TAG, "Получено из кэша: " + url);
                     if (mBigPhotoCallback != null)
                         mBigPhotoCallback.onLoadBig(index, bitmap);
                 }
@@ -150,10 +157,22 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
      * @param handler
      */
     @Override
-    public void onHandlerInit(Handler handler) {
-        mWorkerHandler = handler;
-        mNewRequestManager.setWorkerHandler(mWorkerHandler);
-        mInitCallback.onInit();
+    public void onHandlerInit(Handler handler, int id) {
+        switch (id) {
+            case REQUEST_THREAD_ID:
+                mRequestHandler = handler;
+                mRequestManager.setWorkerHandler(mRequestHandler);
+                break;
+            case CACHE_THREAD_ID:
+                mCacheHandler = handler;
+                break;
+        }
+        if (isAllHandlersReady())
+            mInitCallback.onInit();
+    }
+
+    private boolean isAllHandlersReady() {
+        return mRequestHandler != null && mCacheHandler != null;
     }
 
     /**
@@ -208,14 +227,14 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
             if (baseIndex < 0 || baseIndex >= mInfoList.size())
                 return;
             final String url = mInfoList.get(baseIndex).mBigSizeURL;
-            mCacheManager.getBitmap(url, mWorkerHandler, new CacheManager.ICallback() {
+            mCacheManager.getBitmap(url, mCacheHandler, new CacheManager.ICallback() {
                 @Override
                 public void onGetBitmap(Bitmap bitmap) {
                     if (bitmap == null) {
-                        mNewRequestManager.startRequest(new PhotoCallback(url) {
+                        mRequestManager.startRequest(new PhotoCallback(url) {
                             @Override
                             public void onLoadPhoto() {
-                                mCacheManager.cache(getUrl(), getBitmap(), mWorkerHandler);
+                                mCacheManager.cache(getUrl(), getBitmap(), mCacheHandler);
                             }
                         });
                     }
@@ -244,7 +263,7 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
     }
 
     private void loadInfoList(final int count, final IInfoLoadCallback loadCallback) {
-        mWorkerHandler.post(new Runnable() {
+        mRequestHandler.post(new Runnable() {
             @Override
             public void run() {
                 InputStream inputStream = requestPhotoInfo(count);
@@ -268,7 +287,7 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
     }
 
     private void loadSmallPhotos(final int count) {
-        mWorkerHandler.post(new Runnable() {
+        mRequestHandler.post(new Runnable() {
             @Override
             public void run() {
                 final List<Bitmap> photos = new ArrayList<>(mInfoList.size());
