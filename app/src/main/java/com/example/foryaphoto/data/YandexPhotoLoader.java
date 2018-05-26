@@ -28,6 +28,8 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
     private static final int STEP_PREV = -1;
     private static final int STEP_NEXT = 1;
 
+    private RequestManager mRequestManager;
+    private NewRequestManager mNewRequestManager;
     private CacheManager mCacheManager;
     private String mNextDataURL;
     private Handler mWorkerHandler;
@@ -48,10 +50,12 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
 
 
     YandexPhotoLoader() {
+        mRequestManager = RequestManager.getInstance();
         mCacheManager = CacheManager.getInstance();
         mParser = new YandexPhotoParser();
         mMainHandler = new Handler(Looper.getMainLooper());
         new LoaderThread(this).start();
+        mNewRequestManager = NewRequestManager.getInstance();
     }
 
     public void setInitCallback(IInitSourceCallback initCallback) {
@@ -115,24 +119,18 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
         }
 
         final int index = number;
+        final String url = mInfoList.get(index).mBigSizeURL;
 
-        mCacheManager.getBitmap(mInfoList.get(index).mBigSizeURL, mWorkerHandler, new CacheManager.ICallback() {
+        mCacheManager.getBitmap(url, mWorkerHandler, new CacheManager.ICallback() {
             @Override
-            public void onGetBitmap(Bitmap bitmap) {
+            public void onGetBitmap(final Bitmap bitmap) {
                 if (bitmap == null) {
-                    mWorkerHandler.post(new Runnable() {
+                    mNewRequestManager.startRequest(new PhotoCallback(url) {
                         @Override
-                        public void run() {
-                            final Bitmap bitmap = loadBigPhotos(mInfoList.get(index));
-                            mMainHandler.post(new Runnable() {
-                                @Override
-                                public void run() {
-                                    if (bitmap != null)
-                                        mCacheManager.cache(mInfoList.get(index).mBigSizeURL, bitmap, mWorkerHandler);
-                                    if (mBigPhotoCallback != null)
-                                        mBigPhotoCallback.onLoadBig(index, bitmap);
-                                }
-                            });
+                        public void onLoadPhoto() {
+                            if (mBigPhotoCallback != null)
+                                mBigPhotoCallback.onLoadBig(index, getBitmap());
+                            mCacheManager.cache(getUrl(), getBitmap(), mWorkerHandler);
                         }
                     });
                 }
@@ -140,14 +138,8 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
                     if (mBigPhotoCallback != null)
                         mBigPhotoCallback.onLoadBig(index, bitmap);
                 }
-
-                mWorkerHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        preloadPhotos(index, PRELOAD_COUNT, STEP_NEXT);
-                        preloadPhotos(index, PRELOAD_COUNT, STEP_PREV);
-                    }
-                });
+                preloadPhotos(index, PRELOAD_COUNT, STEP_NEXT);
+                preloadPhotos(index, PRELOAD_COUNT, STEP_PREV);
             }
         });
     }
@@ -160,6 +152,7 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
     @Override
     public void onHandlerInit(Handler handler) {
         mWorkerHandler = handler;
+        mNewRequestManager.setWorkerHandler(mWorkerHandler);
         mInitCallback.onInit();
     }
 
@@ -209,19 +202,25 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
     }
 
     /** Предзагрузить в кэш следующие/предыдущие фотографии */
-    @WorkerThread
     private void preloadPhotos(int baseIndex, int count, int step) {
         while (count > 0) {
             baseIndex += step;
             if (baseIndex < 0 || baseIndex >= mInfoList.size())
                 return;
-            Bitmap bitmap = mCacheManager.getBitmap(mInfoList.get(baseIndex).mBigSizeURL);
-            if (bitmap == null) {
-                bitmap = loadBigPhotos(mInfoList.get(baseIndex));
-                if (bitmap != null) {
-                    mCacheManager.cache(mInfoList.get(baseIndex).mBigSizeURL, bitmap);
+            final String url = mInfoList.get(baseIndex).mBigSizeURL;
+            mCacheManager.getBitmap(url, mWorkerHandler, new CacheManager.ICallback() {
+                @Override
+                public void onGetBitmap(Bitmap bitmap) {
+                    if (bitmap == null) {
+                        mNewRequestManager.startRequest(new PhotoCallback(url) {
+                            @Override
+                            public void onLoadPhoto() {
+                                mCacheManager.cache(getUrl(), getBitmap(), mWorkerHandler);
+                            }
+                        });
+                    }
                 }
-            }
+            });
             count--;
         }
     }
@@ -301,17 +300,28 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
         });
     }
 
-    @WorkerThread
-    private Bitmap loadBigPhotos(YandexPhotoInfo photoInfo) {
-        Bitmap bitmap = null;
-        try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(photoInfo.mBigSizeURL).openConnection();
-            InputStream inputStream = connection.getInputStream();
-            bitmap = BitmapFactory.decodeStream(inputStream);
-        } catch (IOException e) {
-            e.printStackTrace();
+    public static abstract class PhotoCallback {
+
+        private final String mUrl;
+        private Bitmap mBitmap;
+
+        public PhotoCallback(String url) {
+            mUrl = url;
         }
-        return bitmap;
+
+        public String getUrl() {
+            return mUrl;
+        }
+
+        public Bitmap getBitmap() {
+            return mBitmap;
+        }
+
+        public void setBitmap(Bitmap bitmap) {
+            mBitmap = bitmap;
+        }
+
+        public abstract void onLoadPhoto();
     }
 
     private interface IInfoLoadCallback {
