@@ -4,7 +4,6 @@ import android.graphics.Bitmap;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.widget.RecyclerView;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -20,7 +19,6 @@ import java.util.List;
  *         Created on 23.05.18
  */
 public class RecyclerAdapter extends RecyclerView.Adapter<RecyclerAdapter.MyViewHolder> {
-
 
     private List<Bitmap> mPhotoList = new ArrayList<>();
     private IMyListener mListener;
@@ -50,7 +48,6 @@ public class RecyclerAdapter extends RecyclerView.Adapter<RecyclerAdapter.MyView
                         ? mPhotoList.get(rightPhotoListIndex)
                         : null);
     }
-
 
     @Override
     public int getItemCount() {

@@ -3,6 +3,9 @@ package com.example.foryaphoto.data;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.os.Handler;
+import android.os.Looper;
+import android.support.annotation.WorkerThread;
 import android.util.Log;
 
 import java.io.FileInputStream;
@@ -11,6 +14,9 @@ import java.io.IOException;
 import java.util.UUID;
 
 /**
+ * Кэш-менеджер, кэширующий загруженные фотографии на диске.
+ * Работает в рабочем потоке.
+ *
  * @author Aleksandr Karpachev
  *         Created on 24.05.18
  */
@@ -38,9 +44,34 @@ public class CacheManager {
         }
     }
 
-    public Bitmap getBitmap(String fileURL) {
+    public void getBitmap(final String fileURL, Handler workerHandler, final ICallback callback) {
+        workerHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                final Bitmap finalResult = getBitmap(fileURL);
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        callback.onGetBitmap(finalResult);
+                    }
+                });
+            }
+        });
+    }
+
+    public void cache(final String fileURL, final Bitmap bitmap, Handler workerHandler) {
+        workerHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                cache(fileURL, bitmap);
+            }
+        });
+    }
+
+    @WorkerThread
+    public Bitmap getBitmap(String url) {
         Bitmap result;
-        String fileName = makeFileName(fileURL);
+        String fileName = makeFileName(url);
         try (FileInputStream fileInputStream = mContext.openFileInput(fileName)) {
             result = BitmapFactory.decodeStream(fileInputStream);
         } catch(IOException e) {
@@ -51,8 +82,9 @@ public class CacheManager {
         return result;
     }
 
-    public void cache(String fileURL, Bitmap bitmap) {
-        String fileName = makeFileName(fileURL);
+    @WorkerThread
+    public void cache(String url, Bitmap bitmap) {
+        String fileName = makeFileName(url);
         try (
                 FileOutputStream fileOutputStream = mContext.openFileOutput(
                         fileName, Context.MODE_PRIVATE ))
@@ -66,5 +98,9 @@ public class CacheManager {
 
     private String makeFileName(String fileUrl) {
         return UUID.nameUUIDFromBytes(fileUrl.getBytes()).toString();
+    }
+
+    public interface ICallback {
+        void onGetBitmap(Bitmap bitmap);
     }
 }

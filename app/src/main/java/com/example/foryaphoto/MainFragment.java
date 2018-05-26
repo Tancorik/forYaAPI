@@ -26,7 +26,6 @@ import java.util.List;
 public class MainFragment extends Fragment implements ISmallPhotosSource.IInitSourceCallback,
         ISmallPhotosSource.ISmallPhotoCallback, IMyListener {
 
-    private final String POSITION = "pos";
     private YandexPhotoLoader mLoader;
     private RecyclerView mRecyclerView;
     private RecyclerAdapter mAdapter;
@@ -36,8 +35,6 @@ public class MainFragment extends Fragment implements ISmallPhotosSource.IInitSo
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-
     }
 
     @Nullable

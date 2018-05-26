@@ -20,12 +20,18 @@ import java.util.List;
 /**
  * Класс предоставления фотографий в виде Bitmap
  */
-public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, LoaderThread.IHandlerInitCallback {
+public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource,
+        LoaderThread.IHandlerInitCallback {
 
-    private static final String  DATA_URL = "http://api-fotki.yandex.ru/api/recent/";
+    private static final String  DATA_URL = "http://api-fotki.yandex.ru/api/top/";
+    private static final int PRELOAD_COUNT = 5;
+    private static final int STEP_PREV = -1;
+    private static final int STEP_NEXT = 1;
 
+    private CacheManager mCacheManager;
     private String mNextDataURL;
-    private Handler mHandler;
+    private Handler mWorkerHandler;
+    private Handler mMainHandler;
     private IInitSourceCallback mInitCallback;
     private ISmallPhotoCallback mSmallPhotoCallback;
     private IBigPhotoCallback mBigPhotoCallback;
@@ -42,7 +48,9 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, 
 
 
     YandexPhotoLoader() {
+        mCacheManager = CacheManager.getInstance();
         mParser = new YandexPhotoParser();
+        mMainHandler = new Handler(Looper.getMainLooper());
         new LoaderThread(this).start();
     }
 
@@ -64,7 +72,7 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, 
     @Override
     public void initSource() {
         mNextDataURL = null;
-        if (mHandler != null)
+        if (mWorkerHandler != null)
             mInitCallback.onInit();
     }
 
@@ -75,25 +83,13 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, 
      */
     @Override
     public void requestSmallPhotos(final int count) {
-        mHandler.post(new Runnable() {
+        IInfoLoadCallback onInfoLoad = new IInfoLoadCallback() {
             @Override
-            public void run() {
-                InputStream inputStream = requestPhotoInfo(count);
-                String jsonString = readString(inputStream);
-                YandexPhotoParser parser = new YandexPhotoParser();
-                mInfoList = parser.parseJSON(jsonString);
-                final List<Bitmap> photos = loadSmallPhotos(mInfoList);
-                final String nextUrl = parser.getNextURL();
-
-                new Handler(Looper.getMainLooper()).post(new Runnable() {
-                    @Override
-                    public void run() {
-                        mNextDataURL = nextUrl;
-                        mSmallPhotoCallback.onLoadSmall(count, photos);
-                    }
-                });
+            public void onLoadInfo(int count) {
+                loadSmallPhotos(count);
             }
-        });
+        };
+        loadInfoList(count, onInfoLoad);
     }
 
     /**
@@ -110,26 +106,48 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, 
         if (number < 0) {
             number = 0;
             mBigPhotoCallback.onLoadBig(number, null);
+            return;
         }
         else if (number >= mInfoList.size()) {
             number = mInfoList.size() - 1;
             mBigPhotoCallback.onLoadBig(number, null);
+            return;
         }
 
         final int index = number;
 
-        mHandler.post(new Runnable() {
+        mCacheManager.getBitmap(mInfoList.get(index).mBigSizeURL, mWorkerHandler, new CacheManager.ICallback() {
             @Override
-            public void run() {
-                if (mInfoList != null) {
-                    final Bitmap bitmap = loadBigPhotos(mInfoList.get(index));
-                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+            public void onGetBitmap(Bitmap bitmap) {
+                if (bitmap == null) {
+                    mWorkerHandler.post(new Runnable() {
                         @Override
                         public void run() {
-                            mBigPhotoCallback.onLoadBig(index, bitmap);
+                            final Bitmap bitmap = loadBigPhotos(mInfoList.get(index));
+                            mMainHandler.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (bitmap != null)
+                                        mCacheManager.cache(mInfoList.get(index).mBigSizeURL, bitmap, mWorkerHandler);
+                                    if (mBigPhotoCallback != null)
+                                        mBigPhotoCallback.onLoadBig(index, bitmap);
+                                }
+                            });
                         }
                     });
                 }
+                else {
+                    if (mBigPhotoCallback != null)
+                        mBigPhotoCallback.onLoadBig(index, bitmap);
+                }
+
+                mWorkerHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        preloadPhotos(index, PRELOAD_COUNT, STEP_NEXT);
+                        preloadPhotos(index, PRELOAD_COUNT, STEP_PREV);
+                    }
+                });
             }
         });
     }
@@ -141,7 +159,7 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, 
      */
     @Override
     public void onHandlerInit(Handler handler) {
-        mHandler = handler;
+        mWorkerHandler = handler;
         mInitCallback.onInit();
     }
 
@@ -171,6 +189,7 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, 
 
     /**
      * Получить информацию о фотографиях в виде строки
+     *
      * @param inputStream   поток для чтения информации
      * @return
      */
@@ -187,6 +206,24 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, 
             throw new RuntimeException("ошибка ввода вывода при чтении", e);
         }
         return stringBuilder.toString();
+    }
+
+    /** Предзагрузить в кэш следующие/предыдущие фотографии */
+    @WorkerThread
+    private void preloadPhotos(int baseIndex, int count, int step) {
+        while (count > 0) {
+            baseIndex += step;
+            if (baseIndex < 0 || baseIndex >= mInfoList.size())
+                return;
+            Bitmap bitmap = mCacheManager.getBitmap(mInfoList.get(baseIndex).mBigSizeURL);
+            if (bitmap == null) {
+                bitmap = loadBigPhotos(mInfoList.get(baseIndex));
+                if (bitmap != null) {
+                    mCacheManager.cache(mInfoList.get(baseIndex).mBigSizeURL, bitmap);
+                }
+            }
+            count--;
+        }
     }
 
     /**
@@ -207,26 +244,61 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, 
         return url;
     }
 
-    @WorkerThread
-    private List<Bitmap> loadSmallPhotos(List<YandexPhotoInfo> photoInfoList) {
-        List<Bitmap> photos = new ArrayList<>(photoInfoList.size());
-        Bitmap bitmap;
-        CacheManager cacheManager = CacheManager.getInstance();
-        try {
-            for (YandexPhotoInfo photoInfo: photoInfoList) {
-                bitmap = cacheManager.getBitmap(photoInfo.mSmallSizeURL);
-                if (bitmap == null) {
-                    HttpURLConnection connection = ((HttpURLConnection) new URL(photoInfo.mSmallSizeURL).openConnection());
-                    InputStream inputStream = connection.getInputStream();
-                    bitmap = BitmapFactory.decodeStream(inputStream);
-                    cacheManager.cache(photoInfo.mSmallSizeURL, bitmap);
-                }
-                photos.add(bitmap);
+    private void loadInfoList(final int count, final IInfoLoadCallback loadCallback) {
+        mWorkerHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                InputStream inputStream = requestPhotoInfo(count);
+                String jsonString = readString(inputStream);
+                final YandexPhotoParser parser = new YandexPhotoParser();
+                final List<YandexPhotoInfo> infoList = parser.parseJSON(jsonString);
+                mMainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        onLoadInfoList(infoList, parser.getNextURL());
+                        loadCallback.onLoadInfo(count);
+                    }
+                });
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return photos;
+        });
+    }
+
+    private void onLoadInfoList(List<YandexPhotoInfo> infoList, String nextDataURL) {
+        mInfoList = infoList;
+        mNextDataURL = nextDataURL;
+    }
+
+    private void loadSmallPhotos(final int count) {
+        mWorkerHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                final List<Bitmap> photos = new ArrayList<>(mInfoList.size());
+                Bitmap bitmap;
+                try {
+                    for (YandexPhotoInfo photoInfo: mInfoList) {
+                        bitmap = mCacheManager.getBitmap(photoInfo.mSmallSizeURL);
+                        if (bitmap == null) {
+                            HttpURLConnection connection = ((HttpURLConnection) new URL(photoInfo.mSmallSizeURL).openConnection());
+                            InputStream inputStream = connection.getInputStream();
+                            bitmap = BitmapFactory.decodeStream(inputStream);
+                            mCacheManager.cache(photoInfo.mSmallSizeURL, bitmap);
+                        }
+                        photos.add(bitmap);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                // вызываем колбэк в основном потоке
+                mMainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mSmallPhotoCallback != null)
+                            mSmallPhotoCallback.onLoadSmall(count, photos);
+                    }
+                });
+            }
+        });
     }
 
     @WorkerThread
@@ -240,5 +312,9 @@ public class YandexPhotoLoader implements IBigPhotosSource, ISmallPhotosSource, 
             e.printStackTrace();
         }
         return bitmap;
+    }
+
+    private interface IInfoLoadCallback {
+        void onLoadInfo(int count);
     }
 }
